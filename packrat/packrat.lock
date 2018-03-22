@@ -28,6 +28,11 @@ Source: CRAN
 Version: 1.1-2
 Hash: c0d56cd15034f395874c870141870c25
 
+Package: RJSONIO
+Source: CRAN
+Version: 1.3-0
+Hash: fb672e20eb6f3010a3639f855d8ef6de
+
 Package: Rcpp
 Source: CRAN
 Version: 0.12.15
@@ -179,6 +184,12 @@ Source: CRAN
 Version: 0.3.6
 Hash: f6fa1ff1db422a2c5227be30cab6c273
 Requires: Rcpp, digest
+
+Package: httpuv
+Source: CRAN
+Version: 1.3.6.2
+Hash: 0e8f7a1514cdcbe96e551b93facda38b
+Requires: Rcpp
 
 Package: httr
 Source: CRAN
@@ -377,6 +388,24 @@ Version: 0.3-2
 Hash: 01150d939ea5c1fe11671bf13f58bfcd
 Requires: stringr
 
+Package: shiny
+Source: CRAN
+Version: 1.0.5
+Hash: 4d47532a807122bfd6bc3818310f9d2e
+Requires: R6, digest, htmltools, httpuv, jsonlite, mime, sourcetools,
+    xtable
+
+Package: shinyFiles
+Source: CRAN
+Version: 0.6.2
+Hash: 2ce5b22893b4f8b3de72fa79e9e417c1
+Requires: RJSONIO, htmltools, shiny
+
+Package: sourcetools
+Source: CRAN
+Version: 0.1.6
+Hash: 226d56d7469587da40b0f96180e711b4
+
 Package: stringi
 Source: CRAN
 Version: 1.1.6
@@ -447,6 +476,11 @@ Source: CRAN
 Version: 1.2.0
 Hash: 94e9b541116e27d80a23d436f81eda80
 Requires: Rcpp
+
+Package: xtable
+Source: CRAN
+Version: 1.8-2
+Hash: 7293235cfcc14cdff1ce7fd1a0212031
 
 Package: yaml
 Source: CRAN

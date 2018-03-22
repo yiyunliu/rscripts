@@ -7,6 +7,10 @@ library(forcats)
 library(lubridate)
 library(openxlsx)
 
+## Utils
+
+
+
 ## Code for sanitizing data
 
 is_chart <- function(sheet_name){
@@ -182,6 +186,17 @@ query2A_W_then_plot <- function(dt,pd,beg,end,err_code){
     query2A_W(pd,beg,end,err_code) %>%
     query2A_W_plot(pd,beg,end,err_code)
 }
+
+## Support functions for shiny
+min_max_date <- function(tidy_dt){
+  tidy_dt %>% summarise(max=max(date),min=min(date)) 
+}
+
+products <- function(tidy_dt){
+  l <- tidy_dt %>% distinct(product)
+  l$product
+}
+
 ## Daily
 daily <- function(dt){
   dt %>% 
