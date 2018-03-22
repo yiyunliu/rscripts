@@ -9,7 +9,9 @@
 
 library(shiny)
 library(shinyFiles)
-source("../core.r")
+# A more portable way to do this?
+Sys.setlocale("LC_CTYPE","chinese")
+source("../core.r",encoding="utf8")
 # Define UI for application that draws a histogram
 ui <- fluidPage(
    titlePanel("ERICA"),
@@ -64,7 +66,8 @@ server <- function(input, output) {
       if(is.null(input$data_file))
         ggplot()+geom_line(mapping=aes(x=c(1:10),y=c(1:10)*c(1:10)+4))
       else
-        dt() %>% query1_then_plot(input$products,input$date_range[1],input$date_range[2])
+        # Shouldn't convert date here. Needs to be fixed
+        dt() %>% query1_then_plot(input$products,as.character(input$date_range[1]),as.character(input$date_range[2]))
    })
 }
 
