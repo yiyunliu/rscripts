@@ -62,6 +62,36 @@ query1_plot <- function(dt,p,beg,end){
     labs(fill = "Error Code", title = paste(paste(p,collapse=" "),"Top 10 from",beg,"to",end))
 }
 
+
+
+query1_tidy_plot <- function(plot_data,p,beg,end){
+  top_ten <- plot_data %>% 
+    transmute(err_code,PPM) %>%
+    group_by(err_code) %>% 
+    summarise(PPM=sum(PPM)) %>% 
+    arrange(desc(PPM)) %>% 
+    slice(1:10) %>% 
+    pull(err_code)
+  plot_data %>% 
+    filter(err_code %in% top_ten) %>% 
+    ggplot(aes(x=reorder(err_code,-PPM,FUN=sum),y=PPM,fill=product))+
+    geom_col()+
+    xlab("Error Code") + 
+    labs(fill = "Product", title = paste(paste(p,collapse=" "),"Top 10 from",beg,"to",end))
+}
+
+query1_tidy <- function(tidy_dt,p,beg,end){
+  tidy_data %>%
+    mutate(date=as_date(date)) %>%
+    filter(between(date,beg,end) & product %in% p) %>%
+    select(-date) %>% 
+    group_by(err_code,product) %>% 
+    summarise_all(sum,na.rm=TRUE) %>% 
+    ungroup(err_code) %>% 
+    mutate(PPM=ppmf(err_count,良品数量,不良品数量)) %>% 
+    arrange(desc(PPM))
+}
+
 query1 <- function(dt,p,beg,end){
   dt %>% 
     filter(tbetween(date,beg,end)) %>%
@@ -76,6 +106,11 @@ query1 <- function(dt,p,beg,end){
     arrange(desc(PPM)) %>% 
     slice(1:10)
 }
+
+query1_tidy_then_plot <- function(tidy_data,p,beg,end){
+  tidy_data %>% query1_tidy(p,beg,end) %>% query1_tidy_plot(p,beg,end)
+}
+
 
 query1_then_plot <- function(dt,p,beg,end){
   dt %>% query1(p,beg,end) %>% query1_plot(p,beg,end)
