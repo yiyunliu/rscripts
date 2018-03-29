@@ -63,11 +63,13 @@ server <- function(input, output) {
   })
   
    output$query1_plot <- renderPlot({
-      if(is.null(input$data_file))
+      if(is.null(input$data_file) || is.null(input$date_range))
         ggplot()+geom_line(mapping=aes(x=c(1:10),y=c(1:10)*c(1:10)+4))
       else
         # Shouldn't convert date here. Needs to be fixed
-        dt() %>% query1_then_plot(input$products,as.character(input$date_range[1]),as.character(input$date_range[2]))
+      {
+        tidy_dt() %>% query1_tidy_then_plot(input$products,input$date_range[1],input$date_range[2])
+      }
    })
 }
 
