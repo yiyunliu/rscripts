@@ -11,7 +11,7 @@ library(shiny)
 library(shinyFiles)
 # A more portable way to do this?
 Sys.setlocale("LC_CTYPE","chinese")
-source("../core.r",encoding="utf8")
+source("../core.R",encoding="utf8")
 # Define UI for application that draws a histogram
 ui <- fluidPage(
    titlePanel("ERICA"),
@@ -36,7 +36,7 @@ server <- function(input, output) {
    
   # Process file
   shinyFileChoose(input,"data_file",roots=c(wd=".."))
-  dt <- reactive({
+  data <- reactive({
     if(is.null(input$data_file))
       NULL
     else {
@@ -44,13 +44,12 @@ server <- function(input, output) {
       suppressWarnings(as.character(file_path$datapath) %>% load_sheets)
       }
     })
-  tidy_dt <- reactive({dt() %>% tidy_sheets})
-  date_range <- reactive({tidy_dt() %>% min_max_date})
-  pds <- reactive({tidy_dt() %>% products})
+  date_range <- reactive({data()[[1]] %>% min_max_date})
+  pds <- reactive({data()[[1]] %>% products})
   
   output$date_range = renderUI({
     if(is.null(input$data_file))
-      dateRangeInput("some_random_stuff","Choose your date here",min="1995-9-17",max="2009-9-18")
+      dateRangeInput("some_random_stuff","Choose your date here:",min="1995-9-17",max="2009-9-18")
     else
       dateRangeInput("date_range","Choose the dates:",min=date_range()$min,max=date_range()$max)
   })
@@ -59,16 +58,15 @@ server <- function(input, output) {
     if(is.null(input$data_file)) 
       checkboxGroupInput("some_other_random_stuff","Choose your product here",choices=c())
     else
-      checkboxGroupInput("products","Choose your product here",choices=pds())
+      checkboxGroupInput("products","Choose your products here",choices=pds())
   })
   
    output$query1_plot <- renderPlot({
       if(is.null(input$data_file) || is.null(input$date_range))
         ggplot()+geom_line(mapping=aes(x=c(1:10),y=c(1:10)*c(1:10)+4))
       else
-        # Shouldn't convert date here. Needs to be fixed
       {
-        tidy_dt() %>% query1_tidy_then_plot(input$products,input$date_range[1],input$date_range[2])
+        data() %>% query1(input$products,input$date_range[1],input$date_range[2])
       }
    })
 }

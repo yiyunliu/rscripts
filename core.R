@@ -37,7 +37,7 @@ load_sheet <- function(path,sheet){
 }
 
 ## Let's rock
-load_sheets_neo <- function(path){
+load_sheets <- function(path){
     sheets <- path %>% excel_sheets() %>% get_sheets()
     data <- sheets %>% map_dfr (partial(load_sheet,path=path))
     good_data <- data %>% select(date,product,good_count)
@@ -56,83 +56,34 @@ ppmf <- function(x,nd,d){x/(nd+d)*10^6} # Computes ppm
 ## Query functions
 
 ### Query 1
-query1_plot <- function(dt,p,beg,end){
-    dt %>%
-        ggplot(aes(x=fct_inorder(ErrCode),y=PPM)) +
-        geom_bar(mapping=aes(fill=fct_inorder(ErrCode)),stat = "identity") + 
-        geom_text(aes(label=round(PPM))) + 
-        xlab("Error Code") + 
-        labs(fill = "Error Code", title = paste(paste(p,collapse=" "),"Top 10 from",beg,"to",end))
-}
-
-
-
-query1_tidy_plot <- function(plot_data,p,beg,end){
-    top_ten <- plot_data %>% 
-        select(-product) %>% 
-        group_by(err_code) %>% 
-        summarise_all(sum) %>%
-        transmute(err_code,PPM=ppmf(err_count,good_count,)) %>% 
+query1 <- function(data,products,date_begin,date_end){
+    good_total <- data[[1]] %>%
+        summarise(good_total=sum(good_count,na.rm=TRUE)) %>%
+        pull(good_total)
+    defect_data <- data[[2]] %>%
+        filter(between(date,date_begin,date_end) & product %in% products) %>%
+        group_by(error_code, product) %>%
+        summarise(defect_count=sum(count,na.rm=TRUE)) %>%
+        ungroup(error_code)
+    defect_total <- defect_data %>%
+        summarise(defect_total=sum(defect_count)) %>%
+        pull(defect_total)
+    plot_data <- defect_data %>%
+        transmute(product,error_code,PPM=defect_count*10^6/(good_total+defect_total))
+    top_ten <- plot_data %>%
+        group_by(error_code) %>%
+        summarise(PPM=sum(PPM)) %>%
         arrange(desc(PPM)) %>%
-        slice(1:10) %>% 
-        pull(err_code)
-    
-    total <- plot_data %>% 
-        group_by(product) %>% 
-        summarise(good = first(good_count), bad = first(不良品数量)) %>%
-        select(-product) %>%
-        summarise_all(sum) %>% 
-        unlist(use.names=FALSE)
-    
-    total <- total[1]+total[2]
-    
-    plot_data %>% 
-        filter(err_code %in% top_ten) %>% 
-        
-        ggplot(aes(x=reorder(err_code,-err_count/total,FUN=sum),y=err_count/total*10^6,fill=product))+
-        geom_col()+
-        xlab("Error Code") + 
-        ylab("PPM")+
-        labs(fill = "Product", title = paste(paste(p,collapse=" "),"Top 10 from",beg,"to",end))
+        slice(1:10) %>%
+        distinct(error_code) %>%
+        pull(error_code)
+    plot_data %>%
+        filter(error_code%in% top_ten) %>%
+        ggplot(aes(x=reorder(error_code,-PPM,sum),y=PPM,fill=product)) +
+        geom_col() +
+        xlab("Error Code")
 }
 
-query1_tidy <- function(tidy_data,p,beg,end){
-    plot_data <- tidy_data %>%
-        mutate(date=as_date(date)) %>%
-        filter(between(date,beg,end) & product %in% p) %>%
-        select(-date) %>% 
-        group_by(err_code,product) %>% 
-        summarise_all(sum,na.rm=TRUE) %>% 
-        ungroup(err_code) 
-}
-
-query1 <- function(dt,p,beg,end){
-    dt %>% 
-        filter(tbetween(date,beg,end)) %>%
-        group_by(product) %>% 
-        select(everything(),-date)  %>% 
-        summarise_all(sum,na.rm=TRUE) %>% 
-        mutate_at(.vars=vars(everything(),-(product:不良品数量)),.funs=funs(ppmf(.,good_count,不良品数量))) %>%
-        filter(product %in% p) %>% 
-        select(-(1:5)) %>% 
-        summarise_all(sum,na.rm=TRUE)%>%
-        gather(key="ErrCode",value="PPM")  %>% 
-        arrange(desc(PPM)) %>% 
-        slice(1:10)
-}
-
-query1_tidy_then_plot <- function(tidy_data,p,beg,end){
-    tidy_data %>% query1_tidy(p,beg,end) %>% query1_tidy_plot(p,beg,end)
-}
-
-
-query1_then_plot <- function(dt,p,beg,end){
-    dt %>% query1(p,beg,end) %>% query1_plot(p,beg,end)
-}
-
-date_to_season <- function(d){
-    (month(d)-1) %/% 3
-}
 ### Query 2
 
 ## Top-level query2_round function
@@ -176,21 +127,23 @@ query2_natural <- function(data,unit,products=c(),date_beg,date_end,err_code){
 }
 
 ## Support functions for shiny
-min_max_date <- function(tidy_dt){
-    tidy_dt %>% summarise(max=max(date),min=min(date)) 
+min_max_date <- function(data){
+    data %>% summarise(max=max(date),min=min(date)) 
 }
 
-products <- function(tidy_dt){
-    l <- tidy_dt %>% distinct(product)
-    l$product
+products <- function(data){
+    data %>% distinct(product) %>% pull(product)
 }
 
 ## Daily
-daily <- function(dt){
-    dt %>% 
-        group_by(date) %>% 
-        select(-product) %>% 
-        summarise_all(sum,na.rm=TRUE)
+daily <- function(data){
+    good_daily <- data[[1]] %>%
+        group_by(date) %>% summarise(good_count=sum(good_count,na.rm=TRUE))
+    defect_daily <- data[[2]] %>%
+        group_by(date,error_code) %>%
+        summarise(defect_count=sum(count,na.rm=TRUE)) %>%
+        spread(error_code,defect_count)
+    left_join(good_daily,defect_daily)
 }
 
 ## Export sanitized data as a csv file
