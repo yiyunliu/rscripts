@@ -7,24 +7,21 @@ library(forcats)
 library(lubridate)
 library(openxlsx)
 
-## Utils
-
-
-
 ## Code for sanitizing data
 
 is_chart <- function(sheet_name){
     str_sub(sheet_name,-6)==" Chart" && str_sub(sheet_name,1,5)!="Daily"
 }
+
 extract_sheet <- function(sheet_name){
     str_sub(sheet_name,1,-7)
 }
+
 get_sheets <- function(svec){
     svec %>% str_trim %>% keep(is_chart) %>% map_chr(extract_sheet)
 }
 
 is_date <- function(str){str == "日期"}
-
 
 load_sheet <- function(path,sheet){
     cols <- sheet %>%
@@ -32,23 +29,26 @@ load_sheet <- function(path,sheet){
         colnames
     ct <- if_else(is_date(cols),"date","numeric")
     read_excel(path,sheet=sheet,col_types = ct,
-               range=cell_limits(c(3,92),c(NA,NA))) %>%
-        mutate(product=sheet) %>% 
-        select(product,everything(),-contains("PPM")) %>%
-        rename(date=日期)
+                       range=cell_limits(c(3,92),c(NA,NA))) %>%
+        mutate(product=sheet,date=as_date(日期)) %>% 
+        select(date,product,everything(),-contains("PPM"),-不良品数量,-日期) %>%
+        rename(good_count = 良品数量) %>%
+        mutate_at(vars(everything(),-(date:product)),funs(as_integer))
 }
 
-load_sheets <- function(path){
+## Let's rock
+load_sheets_neo <- function(path){
     sheets <- path %>% excel_sheets() %>% get_sheets()
-    sheets %>% map_dfr (partial(load_sheet,path=path))
+    data <- sheets %>% map_dfr (partial(load_sheet,path=path))
+    good_data <- data %>% select(date,product,good_count)
+    defect_data <- data %>%
+        select(-good_count) %>%
+        gather(everything(),-(date:product),key="error_code",value="count")
+    list(good_data,defect_data)
 }
 
 
 ## Query helpers
-
-tbetween <- function(t,t1,t2){
-    between(t,as.POSIXct(t1,"UTC"),as.POSIXct(t2,"UTC"))
-}
 
 ppmf <- function(x,nd,d){x/(nd+d)*10^6} # Computes ppm
 
@@ -72,14 +72,14 @@ query1_tidy_plot <- function(plot_data,p,beg,end){
         select(-product) %>% 
         group_by(err_code) %>% 
         summarise_all(sum) %>%
-        transmute(err_code,PPM=ppmf(err_count,良品数量,不良品数量)) %>% 
+        transmute(err_code,PPM=ppmf(err_count,good_count,)) %>% 
         arrange(desc(PPM)) %>%
         slice(1:10) %>% 
         pull(err_code)
     
     total <- plot_data %>% 
         group_by(product) %>% 
-        summarise(good = first(良品数量), bad = first(不良品数量)) %>%
+        summarise(good = first(good_count), bad = first(不良品数量)) %>%
         select(-product) %>%
         summarise_all(sum) %>% 
         unlist(use.names=FALSE)
@@ -112,7 +112,7 @@ query1 <- function(dt,p,beg,end){
         group_by(product) %>% 
         select(everything(),-date)  %>% 
         summarise_all(sum,na.rm=TRUE) %>% 
-        mutate_at(.vars=vars(everything(),-(product:不良品数量)),.funs=funs(ppmf(.,良品数量,不良品数量))) %>%
+        mutate_at(.vars=vars(everything(),-(product:不良品数量)),.funs=funs(ppmf(.,good_count,不良品数量))) %>%
         filter(product %in% p) %>% 
         select(-(1:5)) %>% 
         summarise_all(sum,na.rm=TRUE)%>%
@@ -135,105 +135,44 @@ date_to_season <- function(d){
 }
 ### Query 2
 
-                                        # How I wish I had reader monad in R x_x
-query2A_M <- function(dt,pd,beg,end,err_code){
-    dt %>% 
-        filter(tbetween(date,beg,end)) %>%
-        mutate(date=floor_date(date,unit="month")) %>%
-        filter(product %in% pd) %>%
-        group_by(product,date) %>%
-        summarise_all(sum,na.rm=TRUE) %>%
-        mutate_at(.vars=vars(everything(),-(date:不良品数量)),.funs=funs(ppmf(.,良品数量,不良品数量))) %>%
-        select(product,date,one_of(err_code)) %>% 
-        gather(one_of(c(err_code)),key="err_code",value="PPM")
+## Top-level query2_round function
+query2_round <- function(data,unit,products=c(),date_beg,date_end,err_code){
+    query2_natural(data,
+                   unit,
+                   products,
+                   as_date(floor_date(date_beg,unit=unit)),
+                   as_date(ceiling_date(date_end,unit=unit)),
+                   err_code)
+    ## might want to add some labels here
+}
+## Helper
+date_quotient <- function(data,unit){
+    data %>% mutate(date=as_date(floor_date(date,unit=unit)))
 }
 
-query2A_M_plot <- function(dt,pd,beg,end,err_code){
-    dt %>%
-        mutate(PPM=if_else(is.na(PPM),0,PPM)) %>%
-        ggplot(mapping=aes(x=date,y=PPM)) +
-        geom_col(mapping=aes(fill=product)) +
-        labs(title=paste(paste(pd,collapse=" "),"Monthly",beg,"to",end))
-}
-
-query2A_M_then_plot <- function(dt,pd,beg,end,err_code){
-    dt %>% query2A_M(pd,beg,end,err_code) %>% query2A_M_plot(pd,beg,end,err_)
-}
-
-                                        # Season
-query2A_S <- function(dt,pd,beg,end,err_code){
-    err_codeS <- sym(err_code)
-    dt %>%
-        filter(tbetween(date,beg,end)&product==pd) %>%
-        mutate(season=date_to_season(date),year = year(date)) %>%
-        group_by(year,season) %>% 
-        summarise(nf_total=sum(良品数量+不良品数量,na.rm=TRUE),err_total=sum(UQ(err_codeS),na.rm=TRUE)) %>%
-        transmute(season=rank(season+year*4),PPM = err_total/nf_total*10^6)
-}
-
-query2A_S_plot <- function(dt,pd,beg,end,err_code){
-    dt %>%
-        mutate(PPM=if_else(is.na(PPM),0,PPM),Season=paste("S",season,sep="")) %>% 
-        ggplot(mapping=aes(x=Season,y=PPM))+
-        geom_col(mapping=aes(fill=Season))+
-        geom_text(aes(label=round(PPM))) + 
-        labs(title=paste(pd,err_code,"Quarterly",beg,"to",end)) +
-        theme(legend.position="none")
-}
-
-query2A_S_then_plot <- function(dt,pd,beg,end,err_code){
-    dt %>%
-        query2A_S(pd,beg,end,err_code) %>%
-        query2A_S_plot(pd,beg,end,err_code)
-}
-
-                                        # Day
-query2A_D <- function(dt,pd,beg,end,err_code){
-    err_codeS <- sym(err_code)
-    dt %>%
-        filter(tbetween(date,beg,end)&product==pd) %>%
-        transmute(day=rank(date),PPM = ppmf(UQ(err_codeS),良品数量,不良品数量))
-}
-
-query2A_D_plot <- function(dt,pd,beg,end,err_code){
-    dt %>%
-        mutate(PPM=if_else(is.na(PPM),0,PPM)) %>% 
-        ggplot(mapping=aes(x=day,y=PPM)) + 
-        geom_line(color="purple",size=2) +
-        xlab("Day")+
-        labs(title=paste(pd,err_code,"Daily",beg,"to",end))
-}
-
-query2A_D_then_plot <- function(dt,pd,beg,end,err_code){
-    dt %>%
-        query2A_D(pd,beg,end,err_code) %>%
-        query2A_D_plot(pd,beg,end,err_code)
-}
-
-                                        # Week
-query2A_W <- function(dt,pd,beg,end,err_code){
-    err_codeS <- sym(err_code)
-    dt %>%
-        filter(tbetween(date,beg,end)&product==pd) %>%
-        mutate(week=floor_date(date,unit="week")) %>%
-        group_by(week) %>% 
-        summarise(nf_total=sum(良品数量+不良品数量,na.rm=TRUE),err_total=sum(UQ(err_codeS),na.rm=TRUE)) %>%
-        transmute(week=rank(week),PPM = err_total/nf_total*10^6)
-}
-query2A_W_plot <- function(dt,pd,beg,end,err_code){
-    dt %>% 
-        mutate(PPM=if_else(is.na(PPM),0,PPM),week = fct_inorder(paste("W",week,sep=""))) %>% 
-        ggplot(mapping=aes(x=week,y=PPM)) + 
-        geom_col(mapping=aes(fill=week)) + 
-        geom_text(aes(label=round(PPM))) + 
-        xlab("Week") + 
-        labs(fill = "Week", title = paste(pd,err_code,"Weekly",beg,"to",end)) +
-        theme(legend.position="none")
-}
-query2A_W_then_plot <- function(dt,pd,beg,end,err_code){
-    dt %>%
-        query2A_W(pd,beg,end,err_code) %>%
-        query2A_W_plot(pd,beg,end,err_code)
+## Top-level query2_natural function
+query2_natural <- function(data,unit,products=c(),date_beg,date_end,err_code){
+    good_total <- data[[1]] %>%
+        filter(between(date,date_beg,date_end) & product %in% products) %>%
+        date_quotient(unit) %>%
+        group_by(date) %>%
+        summarise(good_count=sum(good_count,na.rm=TRUE))
+    defect_data <- data[[2]] %>%
+        filter(between(date,date_beg,date_end) & product %in% products) %>%
+        date_quotient(unit) %>%
+        group_by(date,product,error_code) %>%
+        summarise(count=sum(count,na.rm=TRUE)) %>%
+        ungroup(date,product,error_code)
+    defect_total <- defect_data %>%
+        group_by(date) %>%
+        summarise(defect_count=sum(count,na.rm=TRUE))
+    
+    plot_data <- defect_data %>%
+        filter(error_code %in% err_code) %>%
+        left_join(.,good_total) %>%
+        left_join(.,defect_total) %>%
+        transmute(date,product,error_code,PPM=count*10^6/(good_count+defect_count))
+    return (plot_data)
 }
 
 ## Support functions for shiny
@@ -259,14 +198,13 @@ export_sheets <- function(dt,path){
     write.xlsx(dt,path,asTable=TRUE)
 }
 
-## This function should have been used as default.
-## But!
-## "Don't fix it if it ain't broken" x_x
+## Deprecated
 tidy_sheets <- function(dt){
     dt %>%
         gather(everything(),-(1:4),key="err_code",value="err_count")
 }
 
+## File conversion
 convert_sheets <- function(orig,dest){
     load_sheets(orig) %>% export_sheets(dest)
 }
