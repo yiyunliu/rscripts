@@ -123,7 +123,8 @@ query2_natural <- function(data,unit,products=c(),date_beg,date_end,err_code){
         left_join(.,good_total) %>%
         left_join(.,defect_total) %>%
         transmute(date,product,error_code,PPM=count*10^6/(good_count+defect_count))
-    return (plot_data)
+    plot_data %>% ggplot(aes(date,PPM,fill=error_code)) +
+        geom_col()
 }
 
 ## Support functions for shiny
@@ -133,6 +134,10 @@ min_max_date <- function(data){
 
 products <- function(data){
     data %>% distinct(product) %>% pull(product)
+}
+
+error_codes <- function(data){
+    data %>% distinct(error_code) %>% pull(error_code)
 }
 
 ## Daily
