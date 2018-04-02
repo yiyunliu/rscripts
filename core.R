@@ -31,7 +31,7 @@ load_sheet <- function(path,sheet){
     read_excel(path,sheet=sheet,col_types = ct,
                        range=cell_limits(c(3,92),c(NA,NA))) %>%
         mutate(product=sheet,date=as_date(日期)) %>% 
-        select(date,product,everything(),-contains("PPM"),-contains("不良品数量"),-日期) %>%
+        select(date,product,everything(),-contains("PPM"),-contains("不良品数量"),-contains("日期")) %>%
         rename(good_count = 良品数量) %>%
         mutate_at(vars(everything(),-(date:product)),funs(as_integer))
 }
