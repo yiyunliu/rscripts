@@ -58,6 +58,7 @@ ppmf <- function(x,nd,d){x/(nd+d)*10^6} # Computes ppm
 ### Query 1
 query1 <- function(data,products,date_begin,date_end){
     good_total <- data[[1]] %>%
+        filter(between(date,date_begin,date_end) & product %in% products) %>%
         summarise(good_total=sum(good_count,na.rm=TRUE)) %>%
         pull(good_total)
     defect_data <- data[[2]] %>%
@@ -78,7 +79,7 @@ query1 <- function(data,products,date_begin,date_end){
         distinct(error_code) %>%
         pull(error_code)
     plot_data %>%
-        filter(error_code%in% top_ten) %>%
+        filter(error_code %in% top_ten) %>%
         ggplot(aes(x=reorder(error_code,-PPM,sum),y=PPM,fill=product)) +
         geom_col() +
         xlab("Error Code")
