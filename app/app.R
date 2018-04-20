@@ -46,6 +46,7 @@ ui <- fluidPage(
                                                                  'halfyear',
                                                                  'year')),
                                           uiOutput("error_codes"),
+                                          actionLink("selectall","Select All"),
                                           uiOutput("products2")),
                              mainPanel(
                                  plotOutput("query2_plot")
@@ -59,14 +60,14 @@ ui <- fluidPage(
 )
 
 ## Define server logic required to draw a histogram
-server <- function(input, output) {
+server <- function(input, output,session) {
     
     ## Process file
     
     shinyFileChoose(input,"data_file",roots=c(wd=".."))
 
     shinyFileSave(input,"save",roots=c(wd=".."))
-
+    
     
     data <- reactive({
         if(is.null(input$data_file))
@@ -155,6 +156,23 @@ server <- function(input, output) {
             fileinfo <- parseSavePath(roots=(c("wd"="..")),input$save)
             if(fileinfo$type=="xlsx")
                 left_join(data()[[1]],data()[[2]]) %>% export_sheets(as.character(fileinfo$datapath))
+        }
+    })
+
+    observe({
+        if(!is.null(data())){
+            if(input$selectall %% 2 == 1){
+                updateCheckboxGroupInput(session,
+                                         "error_codes",
+                                         selected=data()[[2]] %>% error_codes)
+            }
+            else {
+                updateCheckboxGroupInput(session,
+                                         "error_codes",
+                                         choices=data()[[2]] %>% error_codes,
+                                         selected=NULL,
+                                         inline = TRUE)
+            }
         }
     })
 }
